@@ -36,10 +36,11 @@ import {
   Volume2,
   Mic2,
   Camera,
+  Box,
 } from 'lucide-react';
 import { VideoModeSelector, SceneDirectorOverlay } from './VideoNodeModules';
 import React, { memo, useRef, useState, useEffect, useCallback } from 'react';
-import { CameraAngleControls } from './CameraAngleControls';
+import { Camera3DControlNode } from './Camera3DControlNode';
 
 // ... (keep constants and helper functions: arePropsEqual, safePlay, safePause, InputThumbnails, AudioVisualizer) ...
 
@@ -94,12 +95,7 @@ interface NodeProps {
   ) => void;
   inputAssets?: InputAsset[];
   onInputReorder?: (nodeId: string, newOrder: string[]) => void;
-  onCreateCameraAngleNode?: (sourceNodeId: string, sourceImage: string) => void;
-  onOpen3DCamera?: (
-    sourceNodeId: string,
-    sourceImage: string,
-    sourcePrompt?: string
-  ) => void;
+  onGenerate3DView?: (sourceNodeId: string, sourceImage: string, sourcePrompt?: string) => void;
 
   isDragging?: boolean;
   isGroupDragging?: boolean;
@@ -433,7 +429,7 @@ const NodeComponent: React.FC<NodeProps> = ({
   isSelected,
   isResizing,
   isConnecting,
-  onCreateCameraAngleNode,
+  onGenerate3DView,
 }) => {
   const isWorking = node.status === NodeStatus.WORKING;
   const mediaRef = useRef<
@@ -638,41 +634,12 @@ const NodeComponent: React.FC<NodeProps> = ({
     document.body.removeChild(a);
   };
 
-  const handleGenerateCameraAngle = (angleId: string) => {
-    // 角度ID到提示词的映射
-    const anglePrompts: Record<string, string> = {
-      front: 'front view, eye-level shot',
-      'front-right': '45 degree angle from right',
-      right: 'right side view',
-      'back-right': '45 degree angle from back right',
-      back: 'back view',
-      'back-left': '45 degree angle from back left',
-      left: 'left side view',
-      'front-left': '45 degree angle from left',
-      'top-down': "bird's eye view, top-down perspective, high angle shot",
-      'bottom-up': "worm's eye view, low angle shot, looking up",
-    };
-
-    const promptModifier = anglePrompts[angleId];
-    if (!promptModifier || !node.data.image) {
-      alert('无效的角度或没有图片');
-      return;
+  const handleCamera3DClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 直接调用创建3D镜头控制节点,而不是打开Popover
+    if (onGenerate3DView && node.data.image) {
+      onGenerate3DView(node.id, node.data.image, node.data.prompt);
     }
-
-    // 构建增强的提示词
-    const originalPrompt = node.data.prompt || '生成的图片';
-    const enhancedPrompt = `${originalPrompt}, ${promptModifier}, same subject, consistent lighting, photorealistic`;
-
-    console.log('🎯 Generating image with angle:', angleId);
-    console.log('📝 Enhanced prompt:', enhancedPrompt);
-
-    // 更新节点状态为工作中
-    onUpdate(node.id, { status: NodeStatus.WORKING, error: undefined });
-
-    // 调用 onAction 来生成新角度的图片
-    setTimeout(() => {
-      onAction(node.id, enhancedPrompt);
-    }, 100);
   };
 
   const handleUploadVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -795,22 +762,15 @@ const NodeComponent: React.FC<NodeProps> = ({
           )}
           {(node.data.image || node.data.videoUri || node.data.audioUri) && (
             <div className="flex items-center gap-1 relative">
-              {/* 只在图片节点显示 3D 视角按钮 */}
-              {node.data.image && onCreateCameraAngleNode && (
+              {node.data.image && onGenerate3DView && (
                 <button
-                  onClick={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🎥 Creating 3D 视角节点');
-                    onCreateCameraAngleNode(node.id, node.data.image);
-                  }}
-                  className="p-1.5 bg-orange-500/20 border border-orange-400/30 backdrop-blur-md rounded-md text-orange-400 hover:bg-orange-500/30 hover:border-orange-400/50 transition-all pointer-events-auto cursor-pointer z-50"
-                  title="添加 3D 视角节点"
+                  onClick={handleCamera3DClick}
+                  className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-purple-400 hover:text-purple-300 hover:border-purple-400/30 transition-colors"
+                  title="3D 镜头控制"
                 >
-                  🎥
+                  <Box size={14} />
                 </button>
               )}
-
               <button
                 onClick={handleDownload}
                 className="p-1.5 bg-black/40 border border-white/10 backdrop-blur-md rounded-md text-slate-400 hover:text-white hover:border-white/30 transition-colors"
@@ -956,84 +916,20 @@ const NodeComponent: React.FC<NodeProps> = ({
         </div>
       );
     }
-    if (node.type === NodeType.CAMERA_ANGLE) {
-      // 3D 视角节点 - 显示角度控制器
-      const inputImage =
-        inputAssets && inputAssets.length > 0 ? inputAssets[0].src : null;
-
-      if (!inputImage) {
-        return (
-          <div className="w-full h-full p-6 flex flex-col items-center justify-center gap-4 text-slate-600">
-            <Camera size={48} className="text-slate-700" />
-            <div className="text-center">
-              <div className="text-[12px] font-bold mb-2">等待输入</div>
-              <div className="text-[10px]">请连接一个图片节点</div>
-            </div>
-          </div>
-        );
-      }
-
+    if (node.type === NodeType.CAMERA_3D) {
       return (
-        <div className="w-full h-full overflow-hidden bg-zinc-900">
-          <CameraAngleControls
-            referenceImage={inputImage}
-            currentPrompt={node.data.prompt}
-            onConfirm={(horizontal, vertical, distance) => {
-              // 生成增强的提示词
-              const anglePrompts: Record<string, string> = {
-                '0': 'front view, eye-level shot',
-                '45': '45-degree angle from right front',
-                '90': 'right side view',
-                '135': '45-degree angle from back right',
-                '180': 'back view',
-                '225': '45-degree angle from back left',
-                '270': 'left side view',
-                '315': '45-degree angle from left front',
-              };
-
-              let promptModifier =
-                anglePrompts[String(horizontal)] || 'front view';
-
-              // 垂直角度
-              if (vertical > 45)
-                promptModifier += ", extreme bird's eye view, top-down";
-              else if (vertical > 22.5)
-                promptModifier += ", high angle shot, bird's eye view";
-              else if (vertical > -22.5) promptModifier += ', eye-level shot';
-              else if (vertical > -45)
-                promptModifier += ", low angle shot, worm's eye view";
-              else promptModifier += ", extreme low angle, worm's eye view";
-
-              // 距离
-              if (distance <= 2) promptModifier += ', extreme close-up shot';
-              else if (distance <= 4) promptModifier += ', close-up shot';
-              else if (distance <= 6) promptModifier += ', medium shot';
-              else if (distance <= 8) promptModifier += ', long shot';
-              else promptModifier += ', extreme long shot';
-
-              const originalPrompt = node.data.prompt || '生成的图片';
-              const enhancedPrompt = `${originalPrompt}, ${promptModifier}`;
-
-              console.log('🎯 3D 视角确认:', {
-                horizontal,
-                vertical,
-                distance,
-              });
-              console.log('📝 增强提示词:', enhancedPrompt);
-
-              // 更新节点数据为生成状态
-              onUpdate(node.id, {
-                prompt: enhancedPrompt,
-                status: NodeStatus.WORKING,
-                error: undefined,
-              });
-
-              // 触发生成（3D 视角节点本身就是一个变种的图片生成器）
-              onAction(node.id, enhancedPrompt);
-            }}
-            disabled={isWorking}
-          />
-        </div>
+        <Camera3DControlNode
+          node={node}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onGenerate={(params) => {
+            // 触发生成新视角图片
+            const event = new CustomEvent('generateFrom3DControl', {
+              detail: { nodeId: node.id, params }
+            });
+            window.dispatchEvent(event);
+          }}
+        />
       );
     }
     if (node.type === NodeType.AUDIO_GENERATOR) {
@@ -1235,22 +1131,7 @@ const NodeComponent: React.FC<NodeProps> = ({
                   </span>
                 </div>
               )}
-            {/* 3D 视角按钮 - 仅在图片节点且有图片时显示 */}
-            {node.type.includes('IMAGE') &&
-              node.data.image &&
-              onOpen3DCamera && (
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    onOpen3DCamera(node.id, node.data.image!, node.data.prompt);
-                  }}
-                  className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/90 to-blue-500/90 hover:from-purple-500 hover:to-blue-500 backdrop-blur-md rounded-xl border border-white/20 shadow-xl opacity-0 group-hover/media:opacity-100 transition-all duration-300 hover:scale-105 z-30"
-                  title="生成 3D 视角"
-                >
-                  <Camera size={14} className="text-white" />
-                  <span className="text-xs font-bold text-white">3D 视角</span>
-                </button>
-              )}
+            {/* 3D 视角控制器 - 仅在图片节点且有图片时显示 */}
           </>
         )}
         {node.type === NodeType.VIDEO_GENERATOR &&

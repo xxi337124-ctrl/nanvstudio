@@ -7,7 +7,6 @@ import { SketchEditor } from './components/SketchEditor';
 import { SmartSequenceDock } from './components/SmartSequenceDock';
 import { SonicStudio } from './components/SonicStudio';
 import { SettingsModal } from './components/SettingsModal';
-import { Camera3DModal } from './components/Camera3DModal';
 import {
   AppNode,
   NodeType,
@@ -19,8 +18,7 @@ import {
   SmartSequenceItem,
   Asset,
 } from './types';
-import { Camera3DParams } from './types/camera3d';
-import { generateNodeId } from './utils/idGenerator';
+import { Camera3DParams, DEFAULT_CAMERA_PARAMS } from './types/camera3d';
 import {
   generateImageFromText,
   generateVideo,
@@ -56,7 +54,6 @@ import {
   Scan,
   Mic2,
 } from 'lucide-react';
-
 import {
   generateNodeId,
   generateGroupId,
@@ -307,14 +304,6 @@ export const App = () => {
   } | null>(null);
   const [croppingNodeId, setCroppingNodeId] = useState<string | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
-
-  // 3D Camera Modal State
-  const [is3DCameraOpen, setIs3DCameraOpen] = useState(false);
-  const [camera3DSource, setCamera3DSource] = useState<{
-    nodeId: string;
-    image: string;
-    prompt?: string;
-  } | null>(null);
 
   // Refs for closures
   const nodesRef = useRef(nodes);
@@ -587,11 +576,9 @@ export const App = () => {
               ? 'gemini-3-pro-preview'
               : type === NodeType.AUDIO_GENERATOR
                 ? 'gemini-2.5-flash-preview-tts'
-                : type === NodeType.CAMERA_ANGLE
-                  ? 'camera-angle-control'
-                  : type.includes('IMAGE')
-                    ? 'gemini-2.5-flash-image'
-                    : 'gemini-3-pro-preview',
+                : type.includes('IMAGE')
+                  ? 'gemini-2.5-flash-image'
+                  : 'gemini-3-pro-preview',
         generationMode:
           type === NodeType.VIDEO_GENERATOR ? 'DEFAULT' : undefined,
         ...initialData,
@@ -604,7 +591,6 @@ export const App = () => {
         [NodeType.AUDIO_GENERATOR]: '灵感音乐',
         [NodeType.VIDEO_ANALYZER]: '视频分析',
         [NodeType.IMAGE_EDITOR]: '图像编辑',
-        [NodeType.CAMERA_ANGLE]: '3D 视角',
       };
 
       const safeX =
@@ -629,83 +615,79 @@ export const App = () => {
     [pan, scale, saveHistory]
   );
 
-  // 专门用于从图片节点创建 3D 视角节点的函数
-  const addCameraAngleNode = useCallback(
-    (sourceNodeId: string, _sourceNodeImage: string) => {
+  // 创建 3D 镜头控制节点
+  const handleCreate3DControlNode = useCallback(
+    (sourceNodeId: string, sourceImage: string, sourcePrompt?: string) => {
+      const sourceNode = nodes.find(n => n.id === sourceNodeId);
+      if (!sourceNode) return;
+
       try {
         saveHistory();
       } catch {
         // History save failed, continue anyway
       }
 
-      const sourceNode = nodes.find(n => n.id === sourceNodeId);
-      if (!sourceNode) return;
-
-      // 在原图节点右侧创建 3D 视角节点
-      const sourceX = sourceNode.x;
-      const sourceY = sourceNode.y;
-      const newNodeX = sourceX + 450; // 右侧偏移
-      const newNodeY = sourceY;
+      const newNodeX = sourceNode.x + 500;
+      const newNodeY = sourceNode.y;
 
       const newNode: AppNode = {
         id: generateNodeId(),
-        type: NodeType.CAMERA_ANGLE,
+        type: NodeType.CAMERA_3D,
         x: newNodeX,
         y: newNodeY,
-        width: 420,
-        title: '3D 视角',
+        width: 320,
+        title: '3D 镜头控制',
         status: NodeStatus.IDLE,
         data: {
-          prompt: sourceNode.data.prompt || '生成的图片',
+          sourceImage: sourceImage,
+          sourcePrompt: sourcePrompt,
+          camera3DParams: DEFAULT_CAMERA_PARAMS,
         },
-        inputs: [sourceNodeId], // 自动连接到原图节点
+        inputs: [sourceNodeId],
       };
 
       setNodes(prev => [...prev, newNode]);
-      // 自动选中新创建的节点
+      setConnections(prev => [...prev, { from: sourceNodeId, to: newNode.id }]);
       setSelectedNodeIds([newNode.id]);
     },
     [nodes, saveHistory]
   );
 
-  // 打开 3D 视角 modal
-  const handleOpen3DCamera = useCallback(
-    (sourceNodeId: string, sourceImage: string, sourcePrompt?: string) => {
-      setCamera3DSource({
-        nodeId: sourceNodeId,
-        image: sourceImage,
-        prompt: sourcePrompt,
-      });
-      setIs3DCameraOpen(true);
-    },
-    []
-  );
+  // 从3D镜头控制节点生成新视角图片
+  const handleGenerateFrom3DControlNode = useCallback(
+    async (controlNodeId: string, params: { horizontal: number; vertical: number; zoom: number }) => {
+      const controlNode = nodes.find(n => n.id === controlNodeId);
+      if (!controlNode || !controlNode.data.sourceImage) return;
 
-  // 处理 3D 视角生成
-  const handleGenerate3DView = useCallback(
-    async (params: Camera3DParams) => {
-      if (!camera3DSource) return;
+      const sourceImage = controlNode.data.sourceImage;
+      const sourcePrompt = controlNode.data.sourcePrompt;
 
-      const {
-        nodeId: sourceNodeId,
-        image: sourceImage,
-        prompt: sourcePrompt,
-      } = camera3DSource;
-      const sourceNode = nodes.find(n => n.id === sourceNodeId);
-      if (!sourceNode) return;
+      // 查找已存在的生成节点数量
+      const existingGeneratedNodes = nodes.filter(
+        n => n.inputs?.includes(controlNodeId)
+      );
+
+      // 计算新节点位置
+      let newNodeY = controlNode.y;
+      let newNodeX = controlNode.x + 400;
+
+      if (existingGeneratedNodes.length > 0) {
+        // 如果已有生成节点,新节点放在最后一个下方
+        const lastNode = existingGeneratedNodes[existingGeneratedNodes.length - 1];
+        newNodeY = lastNode.y + (lastNode.height || 360) + 20;
+      }
+
+      // 生成提示词
+      const hLabel = params.horizontal === 0 ? 'front' : params.horizontal === 90 ? 'side' : params.horizontal === 180 ? 'back' : '3/4';
+      const vLabel = params.vertical === 0 ? 'eye' : params.vertical > 0 ? 'high' : 'low';
+      const zIndex = params.zoom < 3 ? 'close' : params.zoom < 7 ? 'medium' : 'wide';
+      const enhancedPrompt = `${sourcePrompt || ''} ${hLabel} ${vLabel} ${zIndex} shot`.trim();
 
       try {
         saveHistory();
       } catch {
         // History save failed, continue anyway
       }
-
-      // 构建增强的 prompt
-      const enhancedPrompt = buildCameraPrompt(params, sourcePrompt);
-
-      // 在原图节点右侧创建新节点
-      const newNodeX = sourceNode.x + 450;
-      const newNodeY = sourceNode.y;
 
       const newNode: AppNode = {
         id: generateNodeId(),
@@ -713,23 +695,21 @@ export const App = () => {
         x: newNodeX,
         y: newNodeY,
         width: 420,
-        title: build3DViewTitle(params),
+        title: `H:${params.horizontal.toFixed(0)}° V:${params.vertical.toFixed(0)}° Z:${params.zoom.toFixed(1)}x`,
         status: NodeStatus.WORKING,
         data: {
           prompt: enhancedPrompt,
-          model: sourceNode.data.model || 'gemini-2.5-flash-image',
-          aspectRatio: sourceNode.data.aspectRatio || '16:9',
+          model: 'gemini-2.5-flash-image',
+          aspectRatio: '16:9',
           camera3DParams: params,
         },
-        inputs: [sourceNodeId],
+        inputs: [controlNodeId],
       };
 
-      // 添加新节点和连接
       setNodes(prev => [...prev, newNode]);
-      setConnections(prev => [...prev, { from: sourceNodeId, to: newNode.id }]);
-      setSelectedNodeIds([newNode.id]);
+      setConnections(prev => [...prev, { from: controlNodeId, to: newNode.id }]);
 
-      // 调用 API 生成图片
+      // 调用API生成图片
       try {
         const res = await generateImageFromText(
           enhancedPrompt,
@@ -742,24 +722,51 @@ export const App = () => {
           }
         );
 
-        // 更新节点状态
-        handleNodeUpdate(newNode.id, {
-          image: res[0],
-          images: res,
-          status: NodeStatus.SUCCESS,
-        });
+        setNodes(prev =>
+          prev.map(n =>
+            n.id === newNode.id
+              ? { ...n, data: { ...n.data, image: res[0], images: res }, status: NodeStatus.SUCCESS }
+              : n
+          )
+        );
 
-        // 添加到资源历史
-        handleAssetGenerated('image', res[0], build3DViewTitle(params));
+        setAssetHistory(h => [
+          { id: `a-${Date.now()}`, type: 'image' as const, src: res[0], title: newNode.title, timestamp: Date.now() },
+          ...h,
+        ]);
       } catch (error: any) {
-        handleNodeUpdate(newNode.id, {
-          error: error?.message || '生成失败',
-          status: NodeStatus.ERROR,
-        });
+        setNodes(prev =>
+          prev.map(n =>
+            n.id === newNode.id
+              ? { ...n, data: { ...n.data, error: error?.message || '生成失败' }, status: NodeStatus.ERROR }
+              : n
+          )
+        );
       }
     },
-    [camera3DSource, nodes, saveHistory, handleNodeUpdate, handleAssetGenerated]
+    [nodes, saveHistory]
   );
+
+  // 监听3D镜头控制节点的生成请求
+  useEffect(() => {
+    const handleGenerateFrom3DControl = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        nodeId: string;
+        params: { horizontal: number; vertical: number; zoom: number };
+      }>;
+      const { nodeId, params } = customEvent.detail;
+
+      const controlNode = nodes.find(n => n.id === nodeId);
+      if (!controlNode || !controlNode.data.sourceImage) return;
+
+      handleGenerateFrom3DControlNode(nodeId, params);
+    };
+
+    window.addEventListener('generateFrom3DControl', handleGenerateFrom3DControl);
+    return () => {
+      window.removeEventListener('generateFrom3DControl', handleGenerateFrom3DControl);
+    };
+  }, [nodes, handleGenerateFrom3DControlNode]);
 
   const handleAssetGenerated = useCallback(
     (type: 'image' | 'video' | 'audio', src: string, title: string) => {
@@ -2065,10 +2072,12 @@ export const App = () => {
               })()}
           </svg>
 
-          {nodes.map(node => (
-            <Node
-              key={node.id}
-              node={node}
+          {nodes.map(node => {
+            // 渲染普通节点
+            return (
+              <Node
+                key={node.id}
+                node={node}
               onUpdate={handleNodeUpdate}
               onAction={handleNodeAction}
               onDelete={id => deleteNodes([id])}
@@ -2077,8 +2086,9 @@ export const App = () => {
                 setCroppingNodeId(id);
                 setImageToCrop(img);
               }}
-              onCreateCameraAngleNode={addCameraAngleNode}
-              onOpen3DCamera={handleOpen3DCamera}
+              onGenerate3DView={(sourceNodeId, sourceImage, sourcePrompt) => {
+                handleCreate3DControlNode(sourceNodeId, sourceImage, sourcePrompt);
+              }}
               onNodeMouseDown={(e, id) => {
                 e.stopPropagation();
                 if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -2250,7 +2260,8 @@ export const App = () => {
               isConnecting={!!connectionStart}
               isGroupDragging={activeGroupNodeIds.includes(node.id)}
             />
-          ))}
+            );
+          })}
 
           {selectionRect && (
             <div
@@ -2475,13 +2486,6 @@ export const App = () => {
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
-        />
-        <Camera3DModal
-          isOpen={is3DCameraOpen}
-          sourceImage={camera3DSource?.image || ''}
-          sourcePrompt={camera3DSource?.prompt}
-          onClose={() => setIs3DCameraOpen(false)}
-          onGenerate={handleGenerate3DView}
         />
 
         <SidebarDock

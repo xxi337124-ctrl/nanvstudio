@@ -17,7 +17,7 @@ export enum NodeType {
   VIDEO_ANALYZER = 'VIDEO_ANALYZER',
   IMAGE_EDITOR = 'IMAGE_EDITOR',
   AUDIO_GENERATOR = 'AUDIO_GENERATOR',
-  CAMERA_ANGLE = 'CAMERA_ANGLE', // 3D 摄影角度转换
+  CAMERA_3D = 'CAMERA_3D', // 3D 镜头控制器
 }
 
 export enum NodeStatus {
@@ -90,6 +90,10 @@ export interface AppNode {
 
     // 3D Camera Params
     camera3DParams?: import('./types/camera3d').Camera3DParams;
+
+    // 3D Camera Control Node specific
+    sourceImage?: string; // Source image for 3D camera control
+    sourcePrompt?: string; // Source prompt for 3D camera control
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }

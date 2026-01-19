@@ -211,7 +211,6 @@ export const SUCCESS = {
 
 export const FEATURES = {
   // Enable/disable experimental features
-  ENABLE_3D_CAMERA_ANGLE: true,
   ENABLE_SMART_SEQUENCE: true,
   ENABLE_MULTI_FRAME_DOCK: true,
   ENABLE_SONIC_STUDIO: true,
