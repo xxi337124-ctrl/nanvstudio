@@ -94,7 +94,12 @@ interface NodeProps {
   ) => void;
   inputAssets?: InputAsset[];
   onInputReorder?: (nodeId: string, newOrder: string[]) => void;
-  onCreateCameraAngleNode?: (sourceNodeId: string, sourceImage: string) => void; // 新增：创建 3D 视角节点
+  onCreateCameraAngleNode?: (sourceNodeId: string, sourceImage: string) => void;
+  onOpen3DCamera?: (
+    sourceNodeId: string,
+    sourceImage: string,
+    sourcePrompt?: string
+  ) => void;
 
   isDragging?: boolean;
   isGroupDragging?: boolean;
@@ -1229,6 +1234,22 @@ const NodeComponent: React.FC<NodeProps> = ({
                     分镜参考
                   </span>
                 </div>
+              )}
+            {/* 3D 视角按钮 - 仅在图片节点且有图片时显示 */}
+            {node.type.includes('IMAGE') &&
+              node.data.image &&
+              onOpen3DCamera && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onOpen3DCamera(node.id, node.data.image!, node.data.prompt);
+                  }}
+                  className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-500/90 to-blue-500/90 hover:from-purple-500 hover:to-blue-500 backdrop-blur-md rounded-xl border border-white/20 shadow-xl opacity-0 group-hover/media:opacity-100 transition-all duration-300 hover:scale-105 z-30"
+                  title="生成 3D 视角"
+                >
+                  <Camera size={14} className="text-white" />
+                  <span className="text-xs font-bold text-white">3D 视角</span>
+                </button>
               )}
           </>
         )}

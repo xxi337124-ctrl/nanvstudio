@@ -87,6 +87,9 @@ export interface AppNode {
 
     // Input Management
     sortedInputIds?: string[]; // Order of input nodes for multi-image composition
+
+    // 3D Camera Params
+    camera3DParams?: import('./types/camera3d').Camera3DParams;
   };
   inputs: string[]; // IDs of nodes this node connects FROM
 }
