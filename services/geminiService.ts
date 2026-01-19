@@ -189,16 +189,21 @@ const pcmToWav = (base64PCM: string, sampleRate: number = 24000): string => {
 export const urlToBase64 = async (url: string): Promise<string> => {
   try {
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = e => resolve(reader.result as string);
-      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () =>
+        reject(new Error('Failed to read blob as Data URL'));
       reader.readAsDataURL(blob);
     });
   } catch (e) {
-    console.error('Failed to convert URL to Base64', e);
-    return '';
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Failed to convert URL to Base64:', errorMessage);
+    throw new Error(`Failed to convert URL to Base64: ${errorMessage}`);
   }
 };
 
