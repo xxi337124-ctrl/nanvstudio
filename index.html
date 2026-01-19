@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <title>NOVA STUDIO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --glass-border: rgba(255, 255, 255, 0.12);
+        --glass-surface: rgba(30, 30, 32, 0.75);
+        --glass-highlight: rgba(255, 255, 255, 0.08);
+        --apple-spring: cubic-bezier(0.32, 0.72, 0, 1);
+        --nova-glow-cyan: rgba(34, 211, 238, 0.5);
+        --nova-glow-purple: rgba(168, 85, 247, 0.5);
+        --nova-glow-emerald: rgba(52, 211, 153, 0.5);
+      }
+
+      body {
+        /* 深空渐变背景 #0a0a0f → #12121a */
+        background: linear-gradient(135deg, #0a0a0f 0%, #0d0d14 50%, #12121a 100%);
+        /* 添加微妙的蓝紫色调 */
+        background-image:
+          linear-gradient(135deg, #0a0a0f 0%, #0d0d14 50%, #12121a 100%),
+          radial-gradient(circle at 20% 80%, rgba(99, 102, 241, 0.03), transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.04), transparent 50%);
+        color: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "SF Pro Text", "SF Pro Display", "Inter", sans-serif;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        user-select: none;
+      }
+      
+      /* Hide native scrollbars */
+      ::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+      }
+
+      /* Apple-style Custom Scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 100px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.4);
+      }
+
+      /* Node Flow Animation */
+      @keyframes dash-flow {
+        to {
+          stroke-dashoffset: -24;
+        }
+      }
+      .animate-flow {
+        animation: dash-flow 1s linear infinite;
+      }
+      
+      /* Selection */
+      ::selection {
+        background: rgba(6, 182, 212, 0.3);
+        color: white;
+      }
+      
+      /* Utility for subtle noise overlay */
+      .noise-bg {
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.02'/%3E%3C/svg%3E");
+        pointer-events: none;
+        mix-blend-mode: overlay;
+        z-index: 0;
+      }
+
+      /* 超大超慢移动的光晕 blob */
+      @keyframes blob-float {
+        0%, 100% {
+          transform: translate(0, 0) scale(1);
+        }
+        25% {
+          transform: translate(50px, -50px) scale(1.1);
+        }
+        50% {
+          transform: translate(-30px, 30px) scale(0.95);
+        }
+        75% {
+          transform: translate(40px, 20px) scale(1.05);
+        }
+      }
+
+      .blob-glow {
+        position: fixed;
+        width: 800px;
+        height: 800px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.04) 40%, transparent 70%);
+        filter: blur(80px);
+        animation: blob-float 40s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.6;
+      }
+
+      /* Custom slider styles for orange theme */
+      .slider-orange::-webkit-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        outline: none;
+        transition: background 0.2s;
+      }
+
+      .slider-orange::-webkit-slider:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .slider-orange::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(249, 115, 28, 0.4);
+        transition: transform 0.1s, box-shadow 0.2s;
+      }
+
+      .slider-orange::-webkit-slider-thumb:hover {
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(249, 115, 28, 0.6);
+      }
+
+      .slider-orange::-webkit-slider-thumb:active {
+        transform: scale(0.95);
+        box-shadow: 0 1px 4px rgba(249, 115, 28, 0.3);
+      }
+
+      /* Firefox slider styles */
+      .slider-orange::-moz-range {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        outline: none;
+        border: none;
+      }
+
+      .slider-orange::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 2px 8px rgba(249, 115, 28, 0.4);
+      }
+
+      .slider-orange::-moz-range-thumb:hover {
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(249, 115, 28, 0.6);
+      }
+
+      .slider-orange::-moz-range-thumb:active {
+        transform: scale(0.95);
+        box-shadow: 0 1px 4px rgba(249, 115, 28, 0.3);
+      }
+
+      .blob-1 {
+        top: -200px;
+        right: -200px;
+        animation-delay: 0s;
+      }
+
+      .blob-2 {
+        bottom: -200px;
+        left: -200px;
+        animation-delay: -20s;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.06) 0%, rgba(99, 102, 241, 0.03) 40%, transparent 70%);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <!-- 背景光晕 -->
+    <div class="blob-glow blob-1"></div>
+    <div class="blob-glow blob-2"></div>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
