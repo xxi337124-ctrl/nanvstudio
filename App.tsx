@@ -636,6 +636,7 @@ export const App = () => {
         x: newNodeX,
         y: newNodeY,
         width: 320,
+        height: 420,
         title: '3D 镜头控制',
         status: NodeStatus.IDLE,
         data: {
