@@ -24,53 +24,46 @@ import {
   analyzeVideo,
   editImageWithText,
   planStoryboard,
-  orchestrateVideoPrompt,
   compileMultiFramePrompt,
   urlToBase64,
-  extractLastFrame,
   generateAudio,
 } from './services/geminiService';
 import { getGenerationStrategy } from './services/videoStrategies';
 import { saveToStorage, loadFromStorage } from './services/storage';
-import { UI, NODE, ERRORS } from './constants';
+import { UI } from './constants';
 import {
   Plus,
   Copy,
   Trash2,
   Type,
   Image as ImageIcon,
-  Video as VideoIcon,
   ScanFace,
   Brush,
   MousePointerClick,
-  LayoutTemplate,
   X,
   Film,
   Link,
   RefreshCw,
-  Upload,
   Minus,
   FolderHeart,
   Unplug,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   Scan,
-  Music,
   Mic2,
 } from 'lucide-react';
 
-// Helper to get image dimensions
-const getImageDimensions = (
-  src: string
-): Promise<{ width: number; height: number }> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.width, height: img.height });
-    img.onerror = reject;
-    img.src = src;
-  });
-};
+import {
+  generateNodeId,
+  generateGroupId,
+  generateWorkflowId,
+  generateAssetId,
+} from './utils/idGenerator';
+import type {
+  HistoryStep,
+  SelectionRect,
+  DraggingGroupState,
+} from './types/history';
 
 // Expanded View Component (Modal)
 interface ExpandedViewProps {
@@ -186,7 +179,7 @@ const ExpandedView = ({ media, onClose }: ExpandedViewProps) => {
 
           {hasMultiple && (
             <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex gap-2">
-              {media.images.map((_: any, i: number) => (
+              {media.images.map((_img: string, i: number) => (
                 <div
                   key={i}
                   onClick={e => {
@@ -248,7 +241,7 @@ export const App = () => {
   const [clipboard, setClipboard] = useState<AppNode | null>(null);
 
   // History
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryStep[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   // Viewport
@@ -265,15 +258,18 @@ export const App = () => {
   const [draggingNodeParentGroupId, setDraggingNodeParentGroupId] = useState<
     string | null
   >(null);
-  const [draggingGroup, setDraggingGroup] = useState<any>(null);
-  const [resizingGroupId, setResizingGroupId] = useState<string | null>(null);
+  const [draggingGroup, setDraggingGroup] = useState<DraggingGroupState | null>(
+    null
+  );
   const [activeGroupNodeIds, setActiveGroupNodeIds] = useState<string[]>([]);
   const [connectionStart, setConnectionStart] = useState<{
     id: string;
     x: number;
     y: number;
   } | null>(null);
-  const [selectionRect, setSelectionRect] = useState<any>(null);
+  const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(
+    null
+  );
 
   // Node Resizing
   const [resizingNodeId, setResizingNodeId] = useState<string | null>(null);
@@ -371,7 +367,7 @@ export const App = () => {
       });
     const loadData = async () => {
       try {
-        const sAssets = await loadFromStorage<any[]>('assets');
+        const sAssets = await loadFromStorage<Asset[]>('assets');
         if (sAssets) setAssetHistory(sAssets);
         const sWfs = await loadFromStorage<Workflow[]>('workflows');
         if (sWfs) setWorkflows(sWfs);
@@ -554,7 +550,12 @@ export const App = () => {
   );
 
   const addNode = useCallback(
-    (type: NodeType, x?: number, y?: number, initialData?: any) => {
+    (
+      type: NodeType,
+      x?: number,
+      y?: number,
+      initialData?: Partial<AppNode['data']>
+    ) => {
       if (type === NodeType.IMAGE_EDITOR) {
         setIsSketchEditorOpen(true);
         return;
@@ -562,11 +563,11 @@ export const App = () => {
 
       try {
         saveHistory();
-      } catch (_e) {
-        // Intentionally empty
+      } catch {
+        // History save failed, continue anyway
       }
 
-      const defaults: any = {
+      const defaults: Partial<AppNode['data']> = {
         model:
           type === NodeType.VIDEO_GENERATOR
             ? 'veo-3.1-fast-generate-preview'
@@ -600,7 +601,7 @@ export const App = () => {
         y !== undefined ? y : (-pan.y + window.innerHeight / 2) / scale - 180;
 
       const newNode: AppNode = {
-        id: `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: generateNodeId(),
         type,
         x: isNaN(safeX) ? 100 : safeX,
         y: isNaN(safeY) ? 100 : safeY,
@@ -618,11 +619,11 @@ export const App = () => {
 
   // 专门用于从图片节点创建 3D 视角节点的函数
   const addCameraAngleNode = useCallback(
-    (sourceNodeId: string, sourceNodeImage: string) => {
+    (sourceNodeId: string, _sourceNodeImage: string) => {
       try {
         saveHistory();
-      } catch (_e) {
-        // Intentionally empty
+      } catch {
+        // History save failed, continue anyway
       }
 
       const sourceNode = nodes.find(n => n.id === sourceNodeId);
@@ -635,7 +636,7 @@ export const App = () => {
       const newNodeY = sourceY;
 
       const newNode: AppNode = {
-        id: `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: generateNodeId(),
         type: NodeType.CAMERA_ANGLE,
         x: newNodeX,
         y: newNodeY,
@@ -652,7 +653,7 @@ export const App = () => {
       // 自动选中新创建的节点
       setSelectedNodeIds([newNode.id]);
     },
-    [nodes, pan, saveHistory]
+    [nodes, saveHistory]
   );
 
   const handleAssetGenerated = useCallback(
@@ -661,7 +662,7 @@ export const App = () => {
         const exists = h.find(a => a.src === src);
         if (exists) return h;
         return [
-          { id: `a-${Date.now()}`, type, src, title, timestamp: Date.now() },
+          { id: generateAssetId(), type, src, title, timestamp: Date.now() },
           ...h,
         ];
       });
@@ -697,7 +698,7 @@ export const App = () => {
   const handleMultiFrameGenerate = async (
     frames: SmartSequenceItem[]
   ): Promise<string> => {
-    const complexPrompt = compileMultiFramePrompt(frames as any[]);
+    const complexPrompt = compileMultiFramePrompt(frames);
 
     try {
       const res = await generateVideo(
@@ -719,8 +720,10 @@ export const App = () => {
         handleAssetGenerated('video', res.uri, 'Smart Sequence');
       }
       return res.uri;
-    } catch (e: any) {
-      throw new Error(e.message || 'Smart Sequence Generation Failed');
+    } catch (e: unknown) {
+      const errorMessage =
+        e instanceof Error ? e.message : 'Smart Sequence Generation Failed';
+      throw new Error(errorMessage);
     }
   };
 
@@ -773,7 +776,7 @@ export const App = () => {
         setMousePos({ x: clientX, y: clientY });
 
         if (selectionRect) {
-          setSelectionRect((prev: any) =>
+          setSelectionRect((prev: SelectionRect | null) =>
             prev ? { ...prev, currentX: clientX, currentY: clientY } : null
           );
           return;
@@ -927,6 +930,7 @@ export const App = () => {
       resizeStartPos,
       scale,
       lastMousePos,
+      getNodeBounds,
     ]
   );
 
@@ -978,7 +982,7 @@ export const App = () => {
             setGroups(prev => [
               ...prev,
               {
-                id: `g-${Date.now()}`,
+                id: generateGroupId(),
                 title: '新建分组',
                 x: fMinX - 32,
                 y: fMinY - 32,
@@ -1067,7 +1071,6 @@ export const App = () => {
     setDraggingNodeId(null);
     setDraggingNodeParentGroupId(null);
     setDraggingGroup(null);
-    setResizingGroupId(null);
     setActiveGroupNodeIds([]);
     setResizingNodeId(null);
     setInitialSize(null);
@@ -1076,7 +1079,15 @@ export const App = () => {
     dragNodeRef.current = null;
     resizeContextRef.current = null;
     dragGroupRef.current = null;
-  }, [selectionRect, pan, scale, saveHistory, draggingNodeId, resizingNodeId]);
+  }, [
+    selectionRect,
+    pan,
+    scale,
+    saveHistory,
+    draggingNodeId,
+    resizingNodeId,
+    getNodeBounds,
+  ]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleGlobalMouseMove);
@@ -1084,11 +1095,21 @@ export const App = () => {
     return () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
+      // Clean up RAF to prevent memory leaks
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [handleGlobalMouseMove, handleGlobalMouseUp]);
 
   const handleNodeUpdate = useCallback(
-    (id: string, data: any, size?: any, title?: string) => {
+    (
+      id: string,
+      data: Partial<AppNode['data']>,
+      size?: { width?: number; height?: number },
+      title?: string
+    ) => {
       setNodes(prev =>
         prev.map(n => {
           if (n.id === id) {
@@ -1201,7 +1222,7 @@ export const App = () => {
                   const row = Math.floor(index / COLUMNS);
                   const posX = startX + col * (childWidth + gapX);
                   const posY = startY + row * (childHeight + gapY);
-                  const newNodeId = `n-${Date.now()}-${index}`;
+                  const newNodeId = generateNodeId() + `-${index}`;
                   newNodes.push({
                     id: newNodeId,
                     type: NodeType.IMAGE_GENERATOR,
@@ -1237,7 +1258,7 @@ export const App = () => {
                 setGroups(prev => [
                   ...prev,
                   {
-                    id: `g-${Date.now()}`,
+                    id: generateGroupId(),
                     title: '分镜生成组',
                     x: startX - groupPadding,
                     y: startY - groupPadding,
@@ -1266,9 +1287,13 @@ export const App = () => {
                       images: res,
                       status: NodeStatus.SUCCESS,
                     });
-                  } catch (e: any) {
+                  } catch (e: unknown) {
+                    const errorMessage =
+                      e instanceof Error
+                        ? e.message
+                        : 'Image generation failed';
                     handleNodeUpdate(n.id, {
-                      error: e.message,
+                      error: errorMessage,
                       status: NodeStatus.ERROR,
                     });
                   }
@@ -1346,8 +1371,10 @@ export const App = () => {
         setNodes(p =>
           p.map(n => (n.id === id ? { ...n, status: NodeStatus.SUCCESS } : n))
         );
-      } catch (e: any) {
-        handleNodeUpdate(id, { error: e.message });
+      } catch (e: unknown) {
+        const errorMessage =
+          e instanceof Error ? e.message : 'Node action failed';
+        handleNodeUpdate(id, { error: errorMessage });
         setNodes(p =>
           p.map(n => (n.id === id ? { ...n, status: NodeStatus.ERROR } : n))
         );
@@ -1360,7 +1387,7 @@ export const App = () => {
     const thumbnailNode = nodes.find(n => n.data.image);
     const thumbnail = thumbnailNode?.data.image || '';
     const newWf: Workflow = {
-      id: `wf-${Date.now()}`,
+      id: generateWorkflowId(),
       title: `工作流 ${new Date().toLocaleDateString()}`,
       thumbnail,
       nodes: JSON.parse(JSON.stringify(nodes)),
@@ -1392,7 +1419,7 @@ export const App = () => {
     const thumbNode = nodesInGroup.find(n => n.data.image);
     const thumbnail = thumbNode ? thumbNode.data.image : '';
     const newWf: Workflow = {
-      id: `wf-${Date.now()}`,
+      id: generateWorkflowId(),
       title: group.title || '未命名工作流',
       thumbnail: thumbnail || '',
       nodes: JSON.parse(JSON.stringify(nodesInGroup)),
@@ -1460,7 +1487,7 @@ export const App = () => {
           saveHistory();
           const newNode: AppNode = {
             ...clipboard,
-            id: `n-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: generateNodeId(),
             x: clipboard.x + 50,
             y: clipboard.y + 50,
             status: NodeStatus.IDLE,
@@ -1539,7 +1566,8 @@ export const App = () => {
         const offsetY = dropY - (minY + height / 2);
         const idMap = new Map<string, string>();
         const newNodes = wf.nodes.map(n => {
-          const newId = `n-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const newId =
+            generateNodeId() + `-${Math.random().toString(36).substring(2, 9)}`;
           idMap.set(n.id, newId);
           return {
             ...n,
@@ -1561,7 +1589,7 @@ export const App = () => {
           .filter(c => c.from && c.to);
         const newGroups = (wf.groups || []).map(g => ({
           ...g,
-          id: `g-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: generateGroupId(),
           x: g.x + offsetX,
           y: g.y + offsetY,
         }));
@@ -2002,15 +2030,19 @@ export const App = () => {
                   setDraggingNodeId(id);
                 }
               }}
-              onPortMouseDown={(e, id, type) => {
+              onPortMouseDown={(e, id) => {
                 e.stopPropagation();
                 setConnectionStart({ id, x: e.clientX, y: e.clientY });
               }}
-              onPortMouseUp={(e, id, type) => {
+              onPortMouseUp={(e, id) => {
                 e.stopPropagation();
                 const start = connectionStartRef.current;
                 if (start && start.id !== id) {
                   if (start.id === 'smart-sequence-dock') {
+                    // TODO: Handle smart-sequence-dock connection
+                    console.warn(
+                      'smart-sequence-dock connection not yet implemented'
+                    );
                   } else {
                     setConnections(p => [...p, { from: start.id, to: id }]);
                     setNodes(p =>
